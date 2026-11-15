@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Absensi Ibadah Minggu USU</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head><body>
+<header><h1>Absensi Ibadah Minggu</h1><p>Mahasiswa Universitas Sumatera Utara</p></header>
+<main>
+<section class="card" id="vLogin"><h2>Masuk dulu</h2><p>Gunakan akun Google Anda. Satu akun hanya bisa absen satu kali per minggu.</p>
+<button class="full" id="bLogin">Masuk dengan Google</button></section>
+
+<section class="hide" id="vApp">
+<div class="card"><div class="user"><img id="foto" alt="" referrerpolicy="no-referrer"><div><b id="uNama"></b><br><small id="uEmail"></small></div>
+<button class="sec" id="bOut" style="margin-left:auto;flex:0">Keluar</button></div></div>
+<div class="card" id="cDone"><h2>Absen minggu ini sudah tercatat</h2><p id="doneInfo"></p></div>
+<form class="card hide" id="form" novalidate><h2>Isi absen <span id="minggu" style="color:var(--mut);font-weight:400;font-size:.9rem"></span></h2>
+<label for="nama">Nama lengkap</label><input id="nama" required autocomplete="name">
+<label for="prodi">Program studi</label><input id="prodi" required placeholder="Contoh: D3 Teknik Informatika" autocomplete="off">
+<label for="stambuk">Stambuk (tahun masuk)</label><input id="stambuk" required inputmode="numeric" maxlength="4" placeholder="Contoh: 2024">
+<label>Lokasi</label><div class="row"><button type="button" class="sec" id="bLoc">Ambil lokasi saya</button></div>
+<div class="loc" id="locInfo">Lokasi belum diambil.</div>
+<button class="full" id="bSend" disabled>Kirim absen</button><div id="msg"></div></form>
+</section></main>
+<script type="module">
+import{auth,login,signOut,onAuthStateChanged,db,doc,getDoc,setDoc,serverTimestamp,weekKey,norm,normStambuk,$}from"./common.js";
+let user,loc=null;const wk=weekKey();
+const msg=(t,c="err")=>$("#msg").innerHTML=t?`<div class="msg ${c}">${t}</div>`:"";
+$("#bLogin").onclick=()=>login().catch(e=>alert("Gagal masuk: "+e.code));
+$("#bOut").onclick=()=>signOut(auth);
+function getLoc(){
+  if(!navigator.geolocation){$("#locInfo").textContent="Browser tidak mendukung lokasi.";return}
+  $("#locInfo").textContent="Mengambil lokasi…";
+  navigator.geolocation.getCurrentPosition(p=>{loc={lat:p.coords.latitude,lng:p.coords.longitude,akurasi:Math.round(p.coords.accuracy)};
+    $("#locInfo").textContent=`Lokasi didapat (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}), akurasi ±${loc.akurasi} m.`;$("#bSend").disabled=false},
+  e=>{$("#locInfo").textContent=e.code===1?"Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser lalu tekan Ambil lokasi saya.":"Lokasi gagal diambil. Coba lagi di tempat terbuka.";},
+  {enableHighAccuracy:true,timeout:15000,maximumAge:0});
+}
+$("#bLoc").onclick=getLoc;
+onAuthStateChanged(auth,async u=>{
+  user=u;$("#vLogin").classList.toggle("hide",!!u);$("#vApp").classList.toggle("hide",!u);if(!u)return;
+  $("#foto").src=u.photoURL||"";$("#uNama").textContent=u.displayName;$("#uEmail").textContent=u.email;$("#nama").value=u.displayName||"";$("#minggu").textContent="· minggu "+wk;
+  const s=await getDoc(doc(db,"absensi",`${u.uid}_${wk}`)).catch(()=>null);
+  if(s&&s.exists()){showDone(s.data())}else{$("#cDone").classList.add("hide");$("#form").classList.remove("hide");getLoc()}
+});
+function showDone(d){$("#cDone").classList.remove("hide");$("#form").classList.add("hide");
+  $("#doneInfo").textContent=`${d.nama} · ${d.prodi} · ${d.stambuk}. Absen berikutnya bisa diisi minggu depan.`}
+$("#form").onsubmit=async e=>{e.preventDefault();msg("");
+  const nama=$("#nama").value.trim(),prodi=$("#prodi").value.trim(),stambuk=normStambuk($("#stambuk").value);
+  if(nama.length<3||prodi.length<3)return msg("Nama dan program studi wajib diisi.");
+  if(!/^20\d{2}$/.test(stambuk))return msg("Stambuk harus 4 digit tahun, misalnya 2024.");
+  if(!loc)return msg("Ambil lokasi terlebih dahulu.");
+  $("#bSend").disabled=true;
+  const data={uid:user.uid,email:user.email,nama,prodi,prodiNorm:norm(prodi),stambuk,lat:loc.lat,lng:loc.lng,akurasi:loc.akurasi,minggu:wk,waktu:serverTimestamp()};
+  try{await setDoc(doc(db,"absensi",`${user.uid}_${wk}`),data);showDone(data)}
+  catch(err){$("#bSend").disabled=false;msg(err.code==="permission-denied"?"Anda sudah absen minggu ini.":"Gagal mengirim: "+err.message)}
+};
+</script></body></html>
